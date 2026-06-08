@@ -128,49 +128,35 @@ function InterviewQuestions({ questions }) {
   )
 }
 
-export default function ResultsScreen({ results, onReset }) {
+export default function ResultsScreen({ results, onSaveToTracker }) {
   const { matchScore, missingKeywords, professionalSummary, interviewQuestions } = results
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <header className="border-b border-gray-100 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-teal rounded-lg flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-            </div>
-            <span className="text-lg font-semibold text-navy">JobReady AI</span>
-          </div>
-          <button
-            onClick={onReset}
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-teal transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            New Analysis
-          </button>
-        </div>
-      </header>
-
-      {/* Results */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
-        <div className="mb-8">
+    <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
+      <div className="flex items-start justify-between mb-8">
+        <div>
           <h1 className="text-3xl font-bold text-navy mb-2">Your Results</h1>
           <p className="text-gray-500 text-base">Here's how well your resume matches the job — and how to close the gap.</p>
         </div>
+        <button
+          onClick={() => onSaveToTracker(matchScore)}
+          className="flex-shrink-0 flex items-center gap-2 text-sm btn-outline ml-6 mt-1"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save to Tracker
+        </button>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <MatchScore score={matchScore} />
-          <MissingKeywords keywords={missingKeywords} />
-          <ProfessionalSummary summary={professionalSummary} />
-          <InterviewQuestions questions={interviewQuestions} />
-        </div>
-      </main>
-    </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <MatchScore score={matchScore} />
+        <MissingKeywords keywords={missingKeywords} />
+        <ProfessionalSummary summary={professionalSummary} />
+        <InterviewQuestions questions={interviewQuestions} />
+      </div>
+    </main>
   )
 }

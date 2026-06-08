@@ -24,20 +24,6 @@ export default function InputScreen({ onAnalyse, loading, resumeManager }) {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <header className="border-b border-gray-100 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <div className="w-8 h-8 bg-teal rounded-lg flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-          </div>
-          <span className="text-lg font-semibold text-navy">JobReady AI</span>
-        </div>
-      </header>
-
-      {/* Main content */}
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-navy mb-2">How well do you fit the job?</h1>
