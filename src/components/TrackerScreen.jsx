@@ -31,8 +31,8 @@ function formatDate(dateStr) {
   })
 }
 
-export default function TrackerScreen({ initialScore, onScoreConsumed }) {
-  const { applications, loading, addApplication, updateApplication, deleteApplication } = useApplications()
+export default function TrackerScreen({ session, onSignOut, initialScore, onScoreConsumed }) {
+  const { applications, loading, addApplication, updateApplication, deleteApplication } = useApplications(session?.user?.id)
   const [modalOpen, setModalOpen] = useState(false)
   const [editData, setEditData] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -80,13 +80,23 @@ export default function TrackerScreen({ initialScore, onScoreConsumed }) {
 
       {/* Row header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-navy">Applications</h2>
-        <button onClick={handleAdd} className="btn-teal flex items-center gap-2 text-sm px-4 py-2.5">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold text-navy">Applications</h2>
+          {session?.user?.email && (
+            <span className="text-xs text-gray-400">{session.user.email}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={onSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            Sign out
+          </button>
+          <button onClick={handleAdd} className="btn-teal flex items-center gap-2 text-sm px-4 py-2.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Add Application
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Content */}

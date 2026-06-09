@@ -2,7 +2,9 @@ import { useState } from 'react'
 import InputScreen from './components/InputScreen'
 import ResultsScreen from './components/ResultsScreen'
 import TrackerScreen from './components/TrackerScreen'
+import LoginScreen from './components/LoginScreen'
 import { useResumeManager } from './hooks/useResumeManager'
+import { useAuth } from './hooks/useAuth'
 
 function AppHeader({ activeTab, onTabChange, showNewAnalysis, onReset }) {
   return (
@@ -61,6 +63,7 @@ export default function App() {
   const [pendingScore, setPendingScore] = useState(null)
 
   const resumeManager = useResumeManager()
+  const { session, signInWithGoogle, signOut } = useAuth()
 
   const handleAnalyse = async ({ jobDescription, resume }) => {
     setLoading(true)
@@ -126,11 +129,22 @@ export default function App() {
             </div>
           )}
         </>
-      ) : (
+      ) : session === undefined ? (
+        <div className="flex-1 flex items-center justify-center">
+          <svg className="animate-spin w-8 h-8 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" strokeOpacity="0.3"/>
+            <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+          </svg>
+        </div>
+      ) : session ? (
         <TrackerScreen
+          session={session}
+          onSignOut={signOut}
           initialScore={pendingScore}
           onScoreConsumed={() => setPendingScore(null)}
         />
+      ) : (
+        <LoginScreen onSignIn={signInWithGoogle} />
       )}
     </div>
   )
