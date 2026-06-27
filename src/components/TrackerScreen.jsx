@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useApplications } from '../hooks/useApplications'
 import ApplicationModal from './ApplicationModal'
+import { supabase } from '../lib/supabase'
 
 const STATUS_STYLES = {
   Applied:   'bg-blue-50 text-blue-600 border-blue-100',
   Interview: 'bg-teal-bg text-teal border-teal/20',
   Rejected:  'bg-red-50 text-red-500 border-red-100',
   Offer:     'bg-emerald-50 text-emerald-600 border-emerald-100',
+  Ghosted:   'bg-gray-100 text-gray-500 border-gray-200',
 }
+
+const STATUS_PRIORITY = { Applied: 1, Ghosted: 1, Interview: 2, Offer: 3, Rejected: 3 }
 
 function ScoreBadge({ score }) {
   if (score == null) return <span className="text-gray-300 text-sm">—</span>
@@ -37,6 +41,12 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
   const [editData, setEditData] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncError, setSyncError] = useState(null)
+  const [syncBanner, setSyncBanner] = useState(null)
+  const [detailApp, setDetailApp] = useState(null)
+  const [detailEmails, setDetailEmails] = useState([])
+  const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
     if (initialScore != null) {
@@ -51,6 +61,7 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
     interviews: applications.filter(a => a.status === 'Interview').length,
     rejected:   applications.filter(a => a.status === 'Rejected').length,
     offers:     applications.filter(a => a.status === 'Offer').length,
+    ghosted:    applications.filter(a => a.status === 'Ghosted').length,
   }
 
   const handleEdit = (app) => { setEditData(app); setModalOpen(true) }
@@ -59,6 +70,94 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
   const handleSave = async (data) => {
     if (editData?.id) await updateApplication(editData.id, data)
     else await addApplication(data)
+  }
+
+  const handleGmailSync = async () => {
+    setSyncLoading(true)
+    setSyncError(null)
+    setSyncBanner(null)
+    try {
+      const res = await fetch('/api/gmail-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: session?.provider_token }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const results = await res.json()
+
+      // Build a map of existing companies for O(1) lookup; updated as we process results
+      const companyMap = new Map(
+        applications.map(a => [a.company.trim().toLowerCase(), { id: a.id, status: a.status }])
+      )
+
+      // Returns [matchedKey, entry] for exact match OR prefix match (e.g. "swivl" ↔ "swivltech")
+      const findExisting = (map, name) => {
+        if (map.has(name)) return [name, map.get(name)]
+        for (const [k, v] of map.entries()) {
+          if (name.startsWith(k) || k.startsWith(name)) return [k, v]
+        }
+        return [null, null]
+      }
+
+      let newCount = 0
+      let updateCount = 0
+
+      for (const result of results) {
+        const key = result.company.trim().toLowerCase()
+        const [matchedKey, existing] = findExisting(companyMap, key)
+        let applicationId
+
+        if (existing) {
+          const currentPriority = STATUS_PRIORITY[existing.status] ?? 0
+          const newPriority = STATUS_PRIORITY[result.status] ?? 0
+          if (newPriority > currentPriority) {
+            await updateApplication(existing.id, { status: result.status })
+            companyMap.set(matchedKey, { ...existing, status: result.status })
+            updateCount++
+          }
+          applicationId = existing.id
+        } else {
+          const newApp = await addApplication({
+            company:      result.company,
+            role:         result.role,
+            status:       result.status,
+            date_applied: result.emailDate,
+          })
+          applicationId = newApp.id
+          companyMap.set(key, { id: applicationId, status: result.status })
+          newCount++
+        }
+
+        await supabase.from('application_emails').insert({
+          application_id:   applicationId,
+          user_id:          session.user.id,
+          status:           result.status,
+          email_subject:    result.emailSubject,
+          email_date:       result.emailDate,
+          gmail_message_id: result.gmailMessageId,
+          gmail_thread_id:  result.gmailThreadId,
+        })
+      }
+
+      setSyncBanner(`Synced ${newCount} new application${newCount !== 1 ? 's' : ''}, ${updateCount} status update${updateCount !== 1 ? 's' : ''} found`)
+    } catch (err) {
+      setSyncError(err.message || 'Sync failed')
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
+  const handleRowClick = async (app) => {
+    setDetailApp(app)
+    setDetailEmails([])
+    setDetailLoading(true)
+    const { data } = await supabase
+      .from('application_emails')
+      .select('*')
+      .eq('application_id', app.id)
+      .order('email_date', { ascending: false })
+    setDetailEmails(data || [])
+    setDetailLoading(false)
   }
 
   const handleDelete = async () => {
@@ -71,11 +170,12 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
   return (
     <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard label="Total Applied" value={stats.total}      color="text-navy" />
         <StatCard label="Interviews"    value={stats.interviews} color="text-teal" />
         <StatCard label="Rejected"      value={stats.rejected}   color="text-red-500" />
         <StatCard label="Offers"        value={stats.offers}     color="text-emerald-600" />
+        <StatCard label="Ghosted"       value={stats.ghosted}    color="text-gray-500" />
       </div>
 
       {/* Row header */}
@@ -90,14 +190,46 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
           <button onClick={onSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
             Sign out
           </button>
+          <button
+            onClick={handleGmailSync}
+            disabled={syncLoading}
+            className="btn-teal flex items-center gap-2 text-sm px-4 py-2.5 disabled:opacity-60"
+          >
+            {syncLoading ? (
+              <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10" strokeOpacity="0.3"/>
+                <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            )}
+            {syncLoading ? 'Syncing…' : 'Sync Gmail'}
+          </button>
           <button onClick={handleAdd} className="btn-teal flex items-center gap-2 text-sm px-4 py-2.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Add Application
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Application
           </button>
         </div>
       </div>
+
+      {syncBanner && (
+        <div className="mb-4 px-4 py-2.5 rounded-xl bg-teal-bg border border-teal/20 text-sm text-teal flex items-center justify-between">
+          <span>{syncBanner}</span>
+          <button onClick={() => setSyncBanner(null)} className="ml-4 text-teal/60 hover:text-teal">✕</button>
+        </div>
+      )}
+
+      {syncError && (
+        <div className="mb-4 px-4 py-2.5 rounded-xl bg-red-50 border border-red-100 text-sm text-red-500 flex items-center justify-between">
+          <span>{syncError}</span>
+          <button onClick={() => setSyncError(null)} className="ml-4 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -136,7 +268,11 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {applications.map(app => (
-                  <tr key={app.id} className="hover:bg-gray-50/60 transition-colors">
+                  <tr
+                    key={app.id}
+                    onClick={() => handleRowClick(app)}
+                    className="hover:bg-gray-50/60 transition-colors cursor-pointer"
+                  >
                     <td className="px-4 py-3.5 pl-6 font-medium text-navy whitespace-nowrap">{app.company}</td>
                     <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap max-w-[180px] truncate">{app.role}</td>
                     <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">{formatDate(app.date_applied)}</td>
@@ -150,7 +286,7 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
                     </td>
                     <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">{formatDate(app.interview_date)}</td>
                     <td className="px-4 py-3.5 text-gray-400 max-w-[160px] truncate">{app.notes || '—'}</td>
-                    <td className="px-4 py-3.5 pr-4 whitespace-nowrap">
+                    <td className="px-4 py-3.5 pr-4 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleEdit(app)}
@@ -190,6 +326,63 @@ export default function TrackerScreen({ session, onSignOut, initialScore, onScor
         onSave={handleSave}
         initialData={editData}
       />
+
+      {/* Application detail */}
+      {detailApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setDetailApp(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h2 className="text-lg font-semibold text-navy">{detailApp.company}</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{detailApp.role}</p>
+              </div>
+              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${STATUS_STYLES[detailApp.status] || 'bg-gray-50 text-gray-500 border-gray-100'}`}>
+                {detailApp.status}
+              </span>
+            </div>
+
+            <div className="mt-5 mb-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Linked Emails</p>
+              {detailLoading ? (
+                <p className="text-sm text-gray-400">Loading…</p>
+              ) : detailEmails.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Added manually</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {detailEmails.map((email, i) => (
+                    <li key={i} className="flex items-start justify-between gap-4">
+                      {email.gmail_message_id ? (
+                        <a
+                          href={`https://mail.google.com/mail/u/0/#inbox/${email.gmail_message_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-teal hover:underline flex-1 truncate"
+                        >
+                          {email.email_subject || '(no subject)'}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-600 flex-1 truncate">{email.email_subject || '(no subject)'}</span>
+                      )}
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(email.email_date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setDetailApp(null)} className="flex-1 btn-outline">Close</button>
+              <button
+                onClick={() => { setDetailApp(null); setDeleteTarget(detailApp) }}
+                className="flex-1 bg-red-500 text-white px-4 py-2 rounded-xl font-medium hover:bg-red-600 transition-colors text-sm"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirm */}
       {deleteTarget && (

@@ -13,9 +13,22 @@ export function useApplications(userId) {
       .from('job_applications')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-    if (error) setError(error.message)
-    else setApplications(data || [])
+      .order('date_applied', { ascending: false })
+    if (error) { setError(error.message); setLoading(false); return }
+
+    const apps = data || []
+
+    // Auto-ghost Applied applications with no activity for 90+ days
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 90)
+    const stale = apps.filter(a => a.status === 'Applied' && new Date(a.date_applied) < cutoff)
+    if (stale.length > 0) {
+      const ids = stale.map(a => a.id)
+      await supabase.from('job_applications').update({ status: 'Ghosted' }).in('id', ids)
+      setApplications(apps.map(a => ids.includes(a.id) ? { ...a, status: 'Ghosted' } : a))
+    } else {
+      setApplications(apps)
+    }
     setLoading(false)
   }
 

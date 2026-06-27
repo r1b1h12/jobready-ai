@@ -19,7 +19,14 @@ export function useAuth() {
   const signInWithGoogle = () =>
     supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     })
 
   const signOut = () => supabase.auth.signOut()
